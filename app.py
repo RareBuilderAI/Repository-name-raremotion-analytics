@@ -9,7 +9,11 @@ st.set_page_config(
 )
 
 st.title("📊 Raremotion Analytics")
-st.caption("Turn raw business data into useful insights.")
+st.caption("Turn business data into useful insights.")
+
+# --------------------------------------------------
+# FILE UPLOAD
+# --------------------------------------------------
 
 uploaded_file = st.file_uploader(
     "Upload a CSV file",
@@ -33,46 +37,215 @@ if df.empty:
 
 st.success("Dataset loaded successfully!")
 
-# Dataset overview
+# --------------------------------------------------
+# PREPARE DATA
+# --------------------------------------------------
+
+# Detect and convert a Date column if one exists
+date_column = None
+
+for column in df.columns:
+    if column.lower() in ["date", "order_date", "sale_date", "created_at"]:
+        converted = pd.to_datetime(df[column], errors="coerce")
+
+        if converted.notna().any():
+            df[column] = converted
+            date_column = column
+            break
+
+# Create Profit when Revenue and Cost exist
+if "Revenue" in df.columns and "Cost" in df.columns:
+    df["Profit"] = df["Revenue"] - df["Cost"]
+
+# --------------------------------------------------
+# BUSINESS OVERVIEW
+# --------------------------------------------------
+
+st.header("Business Overview")
+
+if "Revenue" in df.columns and "Cost" in df.columns:
+    total_revenue = df["Revenue"].sum()
+    total_cost = df["Cost"].sum()
+    total_profit = df["Profit"].sum()
+
+    profit_margin = (
+        (total_profit / total_revenue) * 100
+        if total_revenue != 0
+        else 0
+    )
+
+    total_units = (
+        df["Units"].sum()
+        if "Units" in df.columns
+        else 0
+    )
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    col1.metric(
+        "Total Revenue",
+        f"₦{total_revenue:,.0f}",
+    )
+
+    col2.metric(
+        "Total Cost",
+        f"₦{total_cost:,.0f}",
+    )
+
+    col3.metric(
+        "Total Profit",
+        f"₦{total_profit:,.0f}",
+    )
+
+    col4.metric(
+        "Profit Margin",
+        f"{profit_margin:.1f}%",
+    )
+
+    col5.metric(
+        "Units Sold",
+        f"{total_units:,.0f}",
+    )
+
+else:
+    st.info(
+        "Revenue and Cost columns were not detected, "
+        "so business KPIs cannot be calculated."
+    )
+
+# --------------------------------------------------
+# DATASET OVERVIEW
+# --------------------------------------------------
+
 st.header("Dataset Overview")
 
 col1, col2, col3, col4 = st.columns(4)
 
 col1.metric("Rows", f"{len(df):,}")
 col2.metric("Columns", len(df.columns))
-col3.metric("Missing Values", f"{df.isna().sum().sum():,}")
-col4.metric("Duplicate Rows", f"{df.duplicated().sum():,}")
+col3.metric(
+    "Missing Values",
+    f"{df.isna().sum().sum():,}",
+)
+col4.metric(
+    "Duplicate Rows",
+    f"{df.duplicated().sum():,}",
+)
 
-with st.expander("View Raw Data", expanded=True):
-    st.dataframe(df, use_container_width=True)
+with st.expander("View Raw Data"):
+    st.dataframe(
+        df,
+        use_container_width=True,
+    )
 
-# Detect column types
-numeric_columns = df.select_dtypes(include="number").columns.tolist()
-text_columns = df.select_dtypes(exclude="number").columns.tolist()
+# --------------------------------------------------
+# REVENUE & PROFIT TREND
+# --------------------------------------------------
 
-st.header("Column Analysis")
+if (
+    date_column
+    and "Revenue" in df.columns
+    and "Profit" in df.columns
+):
+    st.header("Revenue & Profit Trend")
 
-left, right = st.columns(2)
+    trend_data = (
+        df.dropna(subset=[date_column])
+        .sort_values(date_column)
+    )
 
-with left:
-    st.subheader("Numeric Columns")
+    trend_chart = px.line(
+        trend_data,
+        x=date_column,
+        y=["Revenue", "Profit"],
+        markers=True,
+        title="Revenue and Profit Over Time",
+    )
 
-    if numeric_columns:
-        for column in numeric_columns:
-            st.write(f"• {column}")
-    else:
-        st.write("No numeric columns detected.")
+    st.plotly_chart(
+        trend_chart,
+        use_container_width=True,
+    )
 
-with right:
-    st.subheader("Text / Other Columns")
+# --------------------------------------------------
+# PRODUCT PERFORMANCE
+# --------------------------------------------------
 
-    if text_columns:
-        for column in text_columns:
-            st.write(f"• {column}")
-    else:
-        st.write("No text columns detected.")
+if "Product" in df.columns and "Revenue" in df.columns:
+    st.header("Product Performance")
 
-# Data quality
+    product_data = (
+        df.groupby("Product", as_index=False)["Revenue"]
+        .sum()
+        .sort_values("Revenue", ascending=False)
+    )
+
+    product_chart = px.bar(
+        product_data,
+        x="Product",
+        y="Revenue",
+        title="Revenue by Product",
+    )
+
+    st.plotly_chart(
+        product_chart,
+        use_container_width=True,
+    )
+
+# --------------------------------------------------
+# REGION PERFORMANCE
+# --------------------------------------------------
+
+if "Region" in df.columns and "Revenue" in df.columns:
+    st.header("Regional Performance")
+
+    region_data = (
+        df.groupby("Region", as_index=False)["Revenue"]
+        .sum()
+        .sort_values("Revenue", ascending=False)
+    )
+
+    region_chart = px.bar(
+        region_data,
+        x="Region",
+        y="Revenue",
+        title="Revenue by Region",
+    )
+
+    st.plotly_chart(
+        region_chart,
+        use_container_width=True,
+    )
+
+# --------------------------------------------------
+# CATEGORY PERFORMANCE
+# --------------------------------------------------
+
+if "Category" in df.columns and "Revenue" in df.columns:
+    st.header("Category Performance")
+
+    category_data = (
+        df.groupby("Category", as_index=False)["Revenue"]
+        .sum()
+        .sort_values("Revenue", ascending=False)
+    )
+
+    category_chart = px.bar(
+        category_data,
+        x="Category",
+        y="Revenue",
+        title="Revenue by Category",
+    )
+
+    st.plotly_chart(
+        category_chart,
+        use_container_width=True,
+    )
+
+# --------------------------------------------------
+# DATA QUALITY
+# --------------------------------------------------
+
 st.header("Data Quality")
 
 missing_data = df.isna().sum()
@@ -88,9 +261,21 @@ else:
         "Missing Values": missing_data.values,
     })
 
-    st.dataframe(missing_df, use_container_width=True)
+    st.dataframe(
+        missing_df,
+        use_container_width=True,
+    )
 
-# Statistics
+# --------------------------------------------------
+# NUMERIC STATISTICS
+# --------------------------------------------------
+
+numeric_columns = (
+    df.select_dtypes(include="number")
+    .columns
+    .tolist()
+)
+
 st.header("Statistics")
 
 if numeric_columns:
@@ -99,101 +284,114 @@ if numeric_columns:
         use_container_width=True,
     )
 else:
-    st.info("No numeric data is available for statistical analysis.")
+    st.info(
+        "No numeric data is available for statistical analysis."
+    )
 
-# Visual analysis
-st.header("Visual Analysis")
+# --------------------------------------------------
+# SMART BUSINESS INSIGHTS
+# --------------------------------------------------
 
-if numeric_columns:
-    selected_numeric = st.selectbox(
-        "Choose a numeric column",
-        numeric_columns,
+st.header("Smart Business Insights")
+
+if "Revenue" in df.columns:
+
+    average_revenue = df["Revenue"].mean()
+    highest_revenue = df["Revenue"].max()
+
+    st.write(
+        f"**Average revenue per record:** "
+        f"₦{average_revenue:,.0f}"
+    )
+
+    st.write(
+        f"**Highest revenue transaction:** "
+        f"₦{highest_revenue:,.0f}"
+    )
+
+    if "Product" in df.columns:
+        product_revenue = (
+            df.groupby("Product")["Revenue"]
+            .sum()
+            .sort_values(ascending=False)
+        )
+
+        if not product_revenue.empty:
+            top_product = product_revenue.index[0]
+            top_product_revenue = product_revenue.iloc[0]
+
+            st.write(
+                f"**Top product:** {top_product} "
+                f"(₦{top_product_revenue:,.0f} revenue)"
+            )
+
+    if "Region" in df.columns:
+        region_revenue = (
+            df.groupby("Region")["Revenue"]
+            .sum()
+            .sort_values(ascending=False)
+        )
+
+        if not region_revenue.empty:
+            top_region = region_revenue.index[0]
+            top_region_revenue = region_revenue.iloc[0]
+
+            st.write(
+                f"**Top region:** {top_region} "
+                f"(₦{top_region_revenue:,.0f} revenue)"
+            )
+
+    if "Profit" in df.columns:
+        total_profit = df["Profit"].sum()
+
+        st.write(
+            f"**Total profit generated:** "
+            f"₦{total_profit:,.0f}"
+        )
+
+# --------------------------------------------------
+# CUSTOM ANALYSIS
+# --------------------------------------------------
+
+st.header("Explore Your Data")
+
+numeric_options = (
+    df.select_dtypes(include="number")
+    .columns
+    .tolist()
+)
+
+if numeric_options:
+    selected_column = st.selectbox(
+        "Choose a numeric column to explore",
+        numeric_options,
     )
 
     chart_type = st.selectbox(
-        "Choose a chart",
+        "Choose visualization",
         ["Histogram", "Box Plot"],
     )
 
     if chart_type == "Histogram":
-        figure = px.histogram(
+        custom_chart = px.histogram(
             df,
-            x=selected_numeric,
-            title=f"Distribution of {selected_numeric}",
+            x=selected_column,
+            title=f"Distribution of {selected_column}",
         )
     else:
-        figure = px.box(
+        custom_chart = px.box(
             df,
-            y=selected_numeric,
-            title=f"Distribution of {selected_numeric}",
+            y=selected_column,
+            title=f"Distribution of {selected_column}",
         )
 
-    st.plotly_chart(figure, use_container_width=True)
-
-else:
-    st.info("No numeric columns are available for charts.")
-
-# Category analysis
-st.header("Category Analysis")
-
-if text_columns:
-    category_column = st.selectbox(
-        "Choose a category",
-        text_columns,
+    st.plotly_chart(
+        custom_chart,
+        use_container_width=True,
     )
-
-    category_counts = (
-        df[category_column]
-        .fillna("Missing")
-        .astype(str)
-        .value_counts()
-        .head(15)
-        .reset_index()
-    )
-
-    category_counts.columns = [category_column, "Count"]
-
-    category_chart = px.bar(
-        category_counts,
-        x=category_column,
-        y="Count",
-        title=f"Top values in {category_column}",
-    )
-
-    st.plotly_chart(category_chart, use_container_width=True)
-
-else:
-    st.info("No categorical columns are available.")
-
-# Automatic insights
-st.header("Automatic Insights")
-
-st.write(
-    f"""
-**Raremotion Analytics found:**
-
-- {len(df):,} records
-- {len(df.columns)} columns
-- {len(numeric_columns)} numeric columns
-- {len(text_columns)} text/other columns
-- {df.isna().sum().sum():,} missing values
-- {df.duplicated().sum():,} duplicate rows
-"""
-)
-
-if numeric_columns:
-    st.subheader("Numeric Highlights")
-
-    for column in numeric_columns[:5]:
-        clean_values = df[column].dropna()
-
-        if not clean_values.empty:
-            st.write(
-                f"**{column}:** "
-                f"Average = {clean_values.mean():,.2f} | "
-                f"Minimum = {clean_values.min():,.2f} | "
-                f"Maximum = {clean_values.max():,.2f}"
-            )
 
 st.divider()
-st.caption("Raremotion Analytics • Built by Raremotion Labs")
+
+st.caption(
+    "Raremotion Analytics • Built by Raremotion Labs"
+)
