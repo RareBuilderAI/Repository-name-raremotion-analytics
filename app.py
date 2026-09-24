@@ -2,7 +2,11 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-from ai_analytics import generate_local_insights, prepare_dataset_summary
+from ai_analytics import (
+    answer_business_question,
+    generate_local_insights,
+    prepare_dataset_summary,
+)
 
 
 # ==================================================
@@ -21,7 +25,10 @@ st.set_page_config(
 # ==================================================
 
 st.title("📊 Raremotion Analytics")
-st.caption("Turn business data into useful insights.")
+
+st.caption(
+    "Turn business data into useful insights."
+)
 
 
 # ==================================================
@@ -39,9 +46,11 @@ uploaded_file = st.file_uploader(
 
 
 if uploaded_file is None:
+
     st.info(
         "Upload a CSV file to begin analyzing your data."
     )
+
     st.stop()
 
 
@@ -50,19 +59,26 @@ if uploaded_file is None:
 # ==================================================
 
 try:
-    df = pd.read_csv(uploaded_file)
+
+    df = pd.read_csv(
+        uploaded_file
+    )
 
 except Exception as error:
+
     st.error(
         f"Could not read this CSV file: {error}"
     )
+
     st.stop()
 
 
 if df.empty:
+
     st.warning(
         "The uploaded CSV file contains no data."
     )
+
     st.stop()
 
 
@@ -169,9 +185,13 @@ if (
         total_units = 0
 
 
-    metric1, metric2, metric3, metric4, metric5 = (
-        st.columns(5)
-    )
+    (
+        metric1,
+        metric2,
+        metric3,
+        metric4,
+        metric5,
+    ) = st.columns(5)
 
 
     metric1.metric(
@@ -221,9 +241,12 @@ st.header(
 )
 
 
-overview1, overview2, overview3, overview4 = (
-    st.columns(4)
-)
+(
+    overview1,
+    overview2,
+    overview3,
+    overview4,
+) = st.columns(4)
 
 
 overview1.metric(
@@ -462,7 +485,6 @@ if missing_data.empty:
         "No missing values detected."
     )
 
-
 else:
 
     st.warning(
@@ -516,7 +538,6 @@ if numeric_columns:
         statistics,
         use_container_width=True,
     )
-
 
 else:
 
@@ -578,6 +599,80 @@ with st.expander(
     st.code(
         dataset_summary
     )
+
+
+# ==================================================
+# ASK RAREMOTION AI
+# ==================================================
+
+st.header(
+    "🤖 Ask Raremotion AI"
+)
+
+
+st.caption(
+    "Ask questions about the business data "
+    "you uploaded."
+)
+
+
+st.write(
+    "Try questions like:"
+)
+
+
+st.markdown(
+    """
+- What is my total revenue?
+- How much profit did I make?
+- Which product is performing best?
+- Which region is performing best?
+- How many units were sold?
+- Summarize the business.
+"""
+)
+
+
+business_question = st.text_input(
+    "Ask a question about your data",
+    placeholder=(
+        "Example: Which product is performing best?"
+    ),
+)
+
+
+ask_button = st.button(
+    "Ask Raremotion AI",
+    type="primary",
+)
+
+
+if ask_button:
+
+    if not business_question.strip():
+
+        st.warning(
+            "Enter a question first."
+        )
+
+    else:
+
+        answer = (
+            answer_business_question(
+                df,
+                business_question,
+            )
+        )
+
+
+        st.subheader(
+            "Answer"
+        )
+
+
+        st.write(
+            answer
+        )
 
 
 # ==================================================
@@ -765,7 +860,6 @@ if numeric_options:
             )
         )
 
-
     else:
 
         custom_chart = (
@@ -784,7 +878,6 @@ if numeric_options:
         custom_chart,
         use_container_width=True,
     )
-
 
 else:
 
