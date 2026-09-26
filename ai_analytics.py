@@ -14,16 +14,13 @@ load_dotenv()
 
 def get_openai_api_key():
     """
-    Get the OpenAI API key.
+    Get the OpenAI API key from either:
 
-    Local development:
-        Reads OPENAI_API_KEY from .env
-
-    Streamlit Cloud:
-        Reads OPENAI_API_KEY from st.secrets
+    1. Local .env file
+    2. Streamlit Cloud Secrets
     """
 
-    # Local .env / environment variable
+    # Local environment / .env
     api_key = os.getenv("OPENAI_API_KEY")
 
     if api_key:
@@ -230,10 +227,7 @@ def prepare_dataset_summary(df: pd.DataFrame) -> str:
 
             product_breakdown = []
 
-            for (
-                product,
-                revenue,
-            ) in product_revenue.items():
+            for product, revenue in product_revenue.items():
 
                 product_breakdown.append(
                     f"{product}: "
@@ -276,10 +270,7 @@ def prepare_dataset_summary(df: pd.DataFrame) -> str:
 
             region_breakdown = []
 
-            for (
-                region,
-                revenue,
-            ) in region_revenue.items():
+            for region, revenue in region_revenue.items():
 
                 region_breakdown.append(
                     f"{region}: "
@@ -316,10 +307,7 @@ def prepare_dataset_summary(df: pd.DataFrame) -> str:
 
             category_breakdown = []
 
-            for (
-                category,
-                revenue,
-            ) in category_revenue.items():
+            for category, revenue in category_revenue.items():
 
                 category_breakdown.append(
                     f"{category}: "
@@ -812,20 +800,17 @@ def ask_raremotion_ai(
     )
 
     # ==================================================
-    # NO API KEY → LOCAL FALLBACK
+    # NO API KEY
     # ==================================================
 
     if not api_key:
 
-        local_answer = (
-            answer_business_question(
-                df,
-                question,
-            )
-        )
-
         return (
-            local_answer,
+            (
+                "Raremotion AI connection error: "
+                "OPENAI_API_KEY was not found. "
+                "Check Streamlit Secrets."
+            ),
             "Local fallback",
         )
 
@@ -932,19 +917,12 @@ USER QUESTION
         )
 
     # ==================================================
-    # API ERROR → LOCAL FALLBACK
+    # TEMPORARY DEPLOYMENT DIAGNOSTICS
     # ==================================================
 
-    except Exception:
-
-        local_answer = (
-            answer_business_question(
-                df,
-                question,
-            )
-        )
+    except Exception as error:
 
         return (
-            local_answer,
+            f"Raremotion AI connection error: {error}",
             "Local fallback",
         )
