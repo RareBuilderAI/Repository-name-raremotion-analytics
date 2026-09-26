@@ -3,9 +3,9 @@ import pandas as pd
 import plotly.express as px
 
 from ai_analytics import (
-    answer_business_question,
-    generate_local_insights,
     prepare_dataset_summary,
+    generate_local_insights,
+    ask_raremotion_ai,
 )
 
 
@@ -26,7 +26,7 @@ st.set_page_config(
 
 st.title("📊 Raremotion Analytics")
 
-st.caption(
+st.write(
     "Turn business data into useful insights."
 )
 
@@ -38,10 +38,6 @@ st.caption(
 uploaded_file = st.file_uploader(
     "Upload a CSV file",
     type=["csv"],
-    help=(
-        "Upload business, sales, customer, financial, "
-        "or other structured data."
-    ),
 )
 
 
@@ -55,19 +51,17 @@ if uploaded_file is None:
 
 
 # ==================================================
-# LOAD CSV
+# LOAD DATASET
 # ==================================================
 
 try:
 
-    df = pd.read_csv(
-        uploaded_file
-    )
+    df = pd.read_csv(uploaded_file)
 
 except Exception as error:
 
     st.error(
-        f"Could not read this CSV file: {error}"
+        f"Unable to read the CSV file: {error}"
     )
 
     st.stop()
@@ -76,7 +70,7 @@ except Exception as error:
 if df.empty:
 
     st.warning(
-        "The uploaded CSV file contains no data."
+        "The uploaded CSV file is empty."
     )
 
     st.stop()
@@ -88,36 +82,32 @@ st.success(
 
 
 # ==================================================
-# PREPARE DATA
+# CLEAN COLUMN NAMES
 # ==================================================
 
-date_column = None
+df.columns = (
+    df.columns
+    .astype(str)
+    .str.strip()
+)
 
 
-possible_date_columns = [
-    "date",
-    "order_date",
-    "sale_date",
-    "created_at",
-]
+# ==================================================
+# CONVERT BUSINESS COLUMNS TO NUMBERS
+# ==================================================
 
+for column in [
+    "Units",
+    "Revenue",
+    "Cost",
+]:
 
-for column in df.columns:
+    if column in df.columns:
 
-    if column.lower() in possible_date_columns:
-
-        converted_dates = pd.to_datetime(
+        df[column] = pd.to_numeric(
             df[column],
             errors="coerce",
         )
-
-        if converted_dates.notna().any():
-
-            df[column] = converted_dates
-
-            date_column = column
-
-            break
 
 
 # ==================================================
@@ -133,6 +123,36 @@ if (
         df["Revenue"]
         - df["Cost"]
     )
+
+
+# ==================================================
+# PREPARE DATE COLUMN
+# ==================================================
+
+date_column = None
+
+
+for column in df.columns:
+
+    if column.lower() in [
+        "date",
+        "order_date",
+        "sale_date",
+        "created_at",
+    ]:
+
+        converted_date = pd.to_datetime(
+            df[column],
+            errors="coerce",
+        )
+
+        if converted_date.notna().any():
+
+            df[column] = converted_date
+
+            date_column = column
+
+            break
 
 
 # ==================================================
@@ -158,67 +178,57 @@ if (
     )
 
     total_profit = (
-        df["Profit"].sum()
+        total_revenue
+        - total_cost
+    )
+
+    profit_margin = (
+        (
+            total_profit
+            / total_revenue
+        )
+        * 100
+        if total_revenue != 0
+        else 0
+    )
+
+    total_units = (
+        df["Units"].sum()
+        if "Units" in df.columns
+        else 0
     )
 
 
-    if total_revenue != 0:
-
-        profit_margin = (
-            total_profit
-            / total_revenue
-        ) * 100
-
-    else:
-
-        profit_margin = 0
+    col1, col2, col3, col4, col5 = (
+        st.columns(5)
+    )
 
 
-    if "Units" in df.columns:
-
-        total_units = (
-            df["Units"].sum()
-        )
-
-    else:
-
-        total_units = 0
-
-
-    (
-        metric1,
-        metric2,
-        metric3,
-        metric4,
-        metric5,
-    ) = st.columns(5)
-
-
-    metric1.metric(
+    col1.metric(
         "Total Revenue",
         f"₦{total_revenue:,.0f}",
     )
 
 
-    metric2.metric(
+    col2.metric(
         "Total Cost",
         f"₦{total_cost:,.0f}",
     )
 
 
-    metric3.metric(
+    col3.metric(
         "Total Profit",
         f"₦{total_profit:,.0f}",
     )
 
 
-    metric4.metric(
+    col4.metric(
         "Profit Margin",
         f"{profit_margin:.1f}%",
     )
 
 
-    metric5.metric(
+    col5.metric(
         "Units Sold",
         f"{total_units:,.0f}",
     )
@@ -227,8 +237,7 @@ if (
 else:
 
     st.info(
-        "Revenue and Cost columns were not detected, "
-        "so business KPIs cannot be calculated."
+        "Revenue and Cost columns were not detected."
     )
 
 
@@ -241,12 +250,9 @@ st.header(
 )
 
 
-(
-    overview1,
-    overview2,
-    overview3,
-    overview4,
-) = st.columns(4)
+overview1, overview2, overview3, overview4 = (
+    st.columns(4)
+)
 
 
 overview1.metric(
@@ -263,19 +269,18 @@ overview2.metric(
 
 overview3.metric(
     "Missing Values",
-    f"{df.isna().sum().sum():,}",
+    f"{int(df.isna().sum().sum()):,}",
 )
 
 
 overview4.metric(
     "Duplicate Rows",
-    f"{df.duplicated().sum():,}",
+    f"{int(df.duplicated().sum()):,}",
 )
 
 
 with st.expander(
-    "View Raw Data",
-    expanded=False,
+    "View Raw Data"
 ):
 
     st.dataframe(
@@ -285,18 +290,29 @@ with st.expander(
 
 
 # ==================================================
-# REVENUE AND PROFIT TREND
+# REVENUE & PROFIT TREND
 # ==================================================
 
 if (
     date_column is not None
     and "Revenue" in df.columns
-    and "Profit" in df.columns
 ):
 
     st.header(
         "Revenue & Profit Trend"
     )
+
+
+    trend_columns = [
+        "Revenue"
+    ]
+
+
+    if "Profit" in df.columns:
+
+        trend_columns.append(
+            "Profit"
+        )
 
 
     trend_data = (
@@ -313,10 +329,7 @@ if (
     trend_chart = px.line(
         trend_data,
         x=date_column,
-        y=[
-            "Revenue",
-            "Profit",
-        ],
+        y=trend_columns,
         markers=True,
         title=(
             "Revenue and Profit Over Time"
@@ -345,8 +358,7 @@ if (
 
 
     product_data = (
-        df
-        .groupby(
+        df.groupby(
             "Product",
             as_index=False,
         )["Revenue"]
@@ -387,8 +399,7 @@ if (
 
 
     region_data = (
-        df
-        .groupby(
+        df.groupby(
             "Region",
             as_index=False,
         )["Revenue"]
@@ -429,8 +440,7 @@ if (
 
 
     category_data = (
-        df
-        .groupby(
+        df.groupby(
             "Category",
             as_index=False,
         )["Revenue"]
@@ -465,21 +475,19 @@ st.header(
 )
 
 
-missing_data = (
-    df
-    .isna()
-    .sum()
+missing_values = (
+    df.isna().sum()
 )
 
 
-missing_data = (
-    missing_data[
-        missing_data > 0
+missing_values = (
+    missing_values[
+        missing_values > 0
     ]
 )
 
 
-if missing_data.empty:
+if missing_values.empty:
 
     st.success(
         "No missing values detected."
@@ -488,20 +496,23 @@ if missing_data.empty:
 else:
 
     st.warning(
-        "Some columns contain missing values."
+        "Missing values were detected."
     )
 
 
-    missing_dataframe = pd.DataFrame(
+    missing_table = pd.DataFrame(
         {
-            "Column": missing_data.index,
-            "Missing Values": missing_data.values,
+            "Column":
+                missing_values.index,
+
+            "Missing Values":
+                missing_values.values,
         }
     )
 
 
     st.dataframe(
-        missing_dataframe,
+        missing_table,
         use_container_width=True,
     )
 
@@ -516,8 +527,7 @@ st.header(
 
 
 numeric_columns = (
-    df
-    .select_dtypes(
+    df.select_dtypes(
         include="number"
     )
     .columns
@@ -539,11 +549,11 @@ if numeric_columns:
         use_container_width=True,
     )
 
+
 else:
 
     st.info(
-        "No numeric data is available "
-        "for statistical analysis."
+        "No numeric columns are available."
     )
 
 
@@ -562,15 +572,15 @@ st.caption(
 )
 
 
+st.subheader(
+    "Business Summary"
+)
+
+
 local_insights = (
     generate_local_insights(
         df
     )
-)
-
-
-st.subheader(
-    "Business Summary"
 )
 
 
@@ -602,7 +612,7 @@ with st.expander(
 
 
 # ==================================================
-# ASK RAREMOTION AI
+# ASK RAREMOTION AI — V5
 # ==================================================
 
 st.header(
@@ -611,58 +621,69 @@ st.header(
 
 
 st.caption(
-    "Ask questions about the business data "
-    "you uploaded."
-)
-
-
-st.write(
-    "Try questions like:"
+    "Ask Raremotion AI questions about "
+    "the business data you uploaded."
 )
 
 
 st.markdown(
     """
-- What is my total revenue?
-- How much profit did I make?
-- Which product is performing best?
-- Which region is performing best?
-- How many units were sold?
-- Summarize the business.
+Try asking:
+
+- What are the three most important things I should know about this business?
+- What does this business performance tell me?
+- Which product is strongest and why?
+- Which region should I pay attention to?
+- How profitable is this business?
+- Summarize the business performance.
+- What are the most important insights in this data?
 """
 )
 
 
-business_question = st.text_input(
-    "Ask a question about your data",
-    placeholder=(
-        "Example: Which product is performing best?"
-    ),
+business_question = (
+    st.text_area(
+        "Ask a question about your data",
+        placeholder=(
+            "Example: What are the three most important "
+            "things I should know about this business?"
+        ),
+        height=110,
+        key="raremotion_ai_question",
+    )
 )
 
 
-ask_button = st.button(
-    "Ask Raremotion AI",
-    type="primary",
+ask_ai_button = (
+    st.button(
+        "Ask Raremotion AI",
+        type="primary",
+        key="ask_raremotion_ai_button",
+    )
 )
 
 
-if ask_button:
+if ask_ai_button:
 
     if not business_question.strip():
 
         st.warning(
-            "Enter a question first."
+            "Please enter a question first."
         )
 
     else:
 
-        answer = (
-            answer_business_question(
-                df,
-                business_question,
+        with st.spinner(
+            "Raremotion AI is analyzing "
+            "your business data..."
+        ):
+
+            answer, answer_source = (
+                ask_raremotion_ai(
+                    df,
+                    business_question,
+                )
             )
-        )
 
 
         st.subheader(
@@ -673,6 +694,21 @@ if ask_button:
         st.write(
             answer
         )
+
+
+        if answer_source == "AI":
+
+            st.success(
+                "🤖 Answer generated by "
+                "Raremotion AI."
+            )
+
+        else:
+
+            st.info(
+                "⚙️ Answer generated by "
+                "the local analytics engine."
+            )
 
 
 # ==================================================
@@ -715,8 +751,7 @@ if "Revenue" in df.columns:
     if "Product" in df.columns:
 
         product_revenue = (
-            df
-            .groupby(
+            df.groupby(
                 "Product"
             )["Revenue"]
             .sum()
@@ -752,8 +787,7 @@ if "Revenue" in df.columns:
     if "Region" in df.columns:
 
         region_revenue = (
-            df
-            .groupby(
+            df.groupby(
                 "Region"
             )["Revenue"]
             .sum()
@@ -817,8 +851,7 @@ st.header(
 
 
 numeric_options = (
-    df
-    .select_dtypes(
+    df.select_dtypes(
         include="number"
     )
     .columns
@@ -830,7 +863,7 @@ if numeric_options:
 
     selected_column = (
         st.selectbox(
-            "Choose a numeric column to explore",
+            "Choose a numeric column",
             numeric_options,
         )
     )
@@ -849,7 +882,7 @@ if numeric_options:
 
     if chart_type == "Histogram":
 
-        custom_chart = (
+        explore_chart = (
             px.histogram(
                 df,
                 x=selected_column,
@@ -860,9 +893,10 @@ if numeric_options:
             )
         )
 
+
     else:
 
-        custom_chart = (
+        explore_chart = (
             px.box(
                 df,
                 y=selected_column,
@@ -875,9 +909,10 @@ if numeric_options:
 
 
     st.plotly_chart(
-        custom_chart,
+        explore_chart,
         use_container_width=True,
     )
+
 
 else:
 
@@ -895,5 +930,6 @@ st.divider()
 
 
 st.caption(
-    "Raremotion Analytics • Built by Raremotion Labs"
+    "Raremotion Analytics • "
+    "Built by Raremotion Labs"
 )

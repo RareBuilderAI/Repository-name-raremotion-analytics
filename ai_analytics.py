@@ -1,9 +1,25 @@
-import pandas as pd
+import os
 
+import pandas as pd
+from dotenv import load_dotenv
+from openai import OpenAI
+
+
+# ==================================================
+# ENVIRONMENT
+# ==================================================
+
+load_dotenv()
+
+
+# ==================================================
+# DATASET SUMMARY
+# ==================================================
 
 def prepare_dataset_summary(df: pd.DataFrame) -> str:
     """
-    Prepare a compact business summary of the dataset.
+    Create a compact summary of the uploaded dataset
+    that can be used by the analytics engine and AI.
     """
 
     summary = []
@@ -40,35 +56,83 @@ def prepare_dataset_summary(df: pd.DataFrame) -> str:
         f"{int(df.duplicated().sum())}"
     )
 
+    # ----------------------------------------------
+    # REVENUE
+    # ----------------------------------------------
+
     if "Revenue" in df.columns:
         total_revenue = df["Revenue"].sum()
+        average_revenue = df["Revenue"].mean()
+        highest_revenue = df["Revenue"].max()
 
         summary.append(
-            f"Total revenue: "
-            f"{total_revenue:,.2f}"
+            f"Total revenue: ₦{total_revenue:,.2f}"
         )
+
+        summary.append(
+            f"Average revenue per record: "
+            f"₦{average_revenue:,.2f}"
+        )
+
+        summary.append(
+            f"Highest revenue transaction: "
+            f"₦{highest_revenue:,.2f}"
+        )
+
+    # ----------------------------------------------
+    # COST
+    # ----------------------------------------------
 
     if "Cost" in df.columns:
         total_cost = df["Cost"].sum()
 
         summary.append(
-            f"Total cost: "
-            f"{total_cost:,.2f}"
+            f"Total cost: ₦{total_cost:,.2f}"
         )
+
+    # ----------------------------------------------
+    # PROFIT
+    # ----------------------------------------------
 
     if (
         "Revenue" in df.columns
         and "Cost" in df.columns
     ):
+        total_revenue = df["Revenue"].sum()
+        total_cost = df["Cost"].sum()
+
         total_profit = (
-            df["Revenue"].sum()
-            - df["Cost"].sum()
+            total_revenue - total_cost
+        )
+
+        profit_margin = (
+            (total_profit / total_revenue) * 100
+            if total_revenue != 0
+            else 0
         )
 
         summary.append(
-            f"Total profit: "
-            f"{total_profit:,.2f}"
+            f"Total profit: ₦{total_profit:,.2f}"
         )
+
+        summary.append(
+            f"Profit margin: {profit_margin:.2f}%"
+        )
+
+    # ----------------------------------------------
+    # UNITS
+    # ----------------------------------------------
+
+    if "Units" in df.columns:
+        total_units = df["Units"].sum()
+
+        summary.append(
+            f"Total units: {total_units:,.0f}"
+        )
+
+    # ----------------------------------------------
+    # PRODUCT PERFORMANCE
+    # ----------------------------------------------
 
     if (
         "Product" in df.columns
@@ -82,10 +146,26 @@ def prepare_dataset_summary(df: pd.DataFrame) -> str:
 
         if not product_revenue.empty:
             summary.append(
-                f"Top product by revenue: "
+                "Top product by revenue: "
                 f"{product_revenue.index[0]} "
-                f"({product_revenue.iloc[0]:,.2f})"
+                f"(₦{product_revenue.iloc[0]:,.2f})"
             )
+
+            product_breakdown = []
+
+            for product, revenue in product_revenue.items():
+                product_breakdown.append(
+                    f"{product}: ₦{revenue:,.2f}"
+                )
+
+            summary.append(
+                "Revenue by product: "
+                + "; ".join(product_breakdown)
+            )
+
+    # ----------------------------------------------
+    # REGION PERFORMANCE
+    # ----------------------------------------------
 
     if (
         "Region" in df.columns
@@ -99,17 +179,61 @@ def prepare_dataset_summary(df: pd.DataFrame) -> str:
 
         if not region_revenue.empty:
             summary.append(
-                f"Top region by revenue: "
+                "Top region by revenue: "
                 f"{region_revenue.index[0]} "
-                f"({region_revenue.iloc[0]:,.2f})"
+                f"(₦{region_revenue.iloc[0]:,.2f})"
+            )
+
+            region_breakdown = []
+
+            for region, revenue in region_revenue.items():
+                region_breakdown.append(
+                    f"{region}: ₦{revenue:,.2f}"
+                )
+
+            summary.append(
+                "Revenue by region: "
+                + "; ".join(region_breakdown)
+            )
+
+    # ----------------------------------------------
+    # CATEGORY PERFORMANCE
+    # ----------------------------------------------
+
+    if (
+        "Category" in df.columns
+        and "Revenue" in df.columns
+    ):
+        category_revenue = (
+            df.groupby("Category")["Revenue"]
+            .sum()
+            .sort_values(ascending=False)
+        )
+
+        if not category_revenue.empty:
+            category_breakdown = []
+
+            for category, revenue in category_revenue.items():
+                category_breakdown.append(
+                    f"{category}: ₦{revenue:,.2f}"
+                )
+
+            summary.append(
+                "Revenue by category: "
+                + "; ".join(category_breakdown)
             )
 
     return "\n".join(summary)
 
 
+# ==================================================
+# LOCAL INSIGHTS
+# ==================================================
+
 def generate_local_insights(df: pd.DataFrame) -> list:
     """
     Generate automatic business insights locally.
+    This does not require an API call.
     """
 
     insights = []
@@ -201,15 +325,19 @@ def generate_local_insights(df: pd.DataFrame) -> list:
     return insights
 
 
+# ==================================================
+# LOCAL QUESTION ENGINE
+# ==================================================
+
 def answer_business_question(
     df: pd.DataFrame,
     question: str,
 ) -> str:
     """
-    Answer common business questions using
-    the uploaded dataset.
+    Local fallback question engine.
 
-    This is the local V4 question engine.
+    This still works if the OpenAI API
+    is unavailable.
     """
 
     if not question:
@@ -296,7 +424,7 @@ def answer_business_question(
         )
 
     # ----------------------------------------------
-    # BEST / TOP PRODUCT
+    # TOP PRODUCT
     # ----------------------------------------------
 
     if (
@@ -338,7 +466,7 @@ def answer_business_question(
         )
 
     # ----------------------------------------------
-    # BEST / TOP REGION
+    # TOP REGION
     # ----------------------------------------------
 
     if (
@@ -420,13 +548,156 @@ def answer_business_question(
             for insight in insights
         )
 
+    return (
+        "I cannot answer that question "
+        "with the local analytics engine."
+    )
+
+
+# ==================================================
+# REAL RAREMOTION AI — V5
+# ==================================================
+
+def ask_raremotion_ai(
+    df: pd.DataFrame,
+    question: str,
+) -> tuple:
+    """
+    Ask the real OpenAI model a question using
+    calculated business context.
+
+    Returns:
+        (answer, source)
+
+    source will be:
+        "AI"
+        or
+        "Local fallback"
+    """
+
+    if not question.strip():
+        return (
+            "Please enter a question.",
+            "Local fallback",
+        )
+
+    api_key = os.getenv(
+        "OPENAI_API_KEY"
+    )
+
     # ----------------------------------------------
-    # HELP
+    # FALLBACK IF API KEY IS MISSING
     # ----------------------------------------------
 
-    return (
-        "I cannot answer that question locally yet. "
-        "Try asking about total revenue, profit, cost, "
-        "top product, top region, total units, "
-        "or ask me to summarize the business."
+    if not api_key:
+        local_answer = (
+            answer_business_question(
+                df,
+                question,
+            )
+        )
+
+        return (
+            local_answer,
+            "Local fallback",
+        )
+
+    # ----------------------------------------------
+    # PREPARE BUSINESS CONTEXT
+    # ----------------------------------------------
+
+    dataset_summary = (
+        prepare_dataset_summary(df)
     )
+
+    client = OpenAI(
+        api_key=api_key
+    )
+
+    instructions = """
+You are Raremotion AI, the business intelligence
+assistant inside Raremotion Analytics.
+
+Your job is to help users understand the business
+dataset that has already been analyzed by the
+Raremotion Analytics Python engine.
+
+Rules:
+
+1. Base your answer only on the supplied dataset
+   context.
+
+2. Never invent numbers, products, regions,
+   categories, trends, or facts that are not
+   supported by the supplied context.
+
+3. If the supplied context does not contain enough
+   information to answer the user's question,
+   clearly say so.
+
+4. Keep answers concise, useful, and written in
+   simple business language.
+
+5. Use Nigerian naira (₦) when discussing monetary
+   values from this dataset.
+
+6. When appropriate, explain what a result could
+   mean for the business, but distinguish calculated
+   facts from suggestions.
+
+7. Do not claim that correlation proves causation.
+
+8. You are part of Raremotion Analytics, built by
+   Raremotion Labs.
+"""
+
+    user_input = f"""
+DATASET CONTEXT
+
+{dataset_summary}
+
+
+USER QUESTION
+
+{question}
+"""
+
+    # ----------------------------------------------
+    # CALL OPENAI
+    # ----------------------------------------------
+
+    try:
+        response = client.responses.create(
+            model="gpt-5.6-luna",
+            instructions=instructions,
+            input=user_input,
+        )
+
+        answer = response.output_text.strip()
+
+        if not answer:
+            raise ValueError(
+                "The AI returned an empty response."
+            )
+
+        return (
+            answer,
+            "AI",
+        )
+
+    # ----------------------------------------------
+    # API FAILURE → LOCAL FALLBACK
+    # ----------------------------------------------
+
+    except Exception:
+        local_answer = (
+            answer_business_question(
+                df,
+                question,
+            )
+        )
+
+        return (
+            local_answer,
+            "Local fallback",
+        )
