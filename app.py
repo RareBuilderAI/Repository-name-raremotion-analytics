@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 
 from auth import show_auth
+from analysis_access import require_analysis_access
 
 from ai_analytics import (
     prepare_dataset_summary,
@@ -47,6 +48,8 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is None:
 
+    st.session_state.pop("analysis_access", None)
+
     st.info(
         "Upload a CSV file to begin analyzing your data."
     )
@@ -84,6 +87,8 @@ st.success(
     "Dataset loaded successfully!"
 )
 
+
+require_analysis_access(user, uploaded_file.getvalue())
 
 # ==================================================
 # CLEAN COLUMN NAMES

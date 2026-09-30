@@ -3,10 +3,13 @@ from supabase import create_client
 
 
 def get_supabase():
-    return create_client(
-        st.secrets["SUPABASE_URL"],
-        st.secrets["SUPABASE_KEY"],
-    )
+    # Never share an authenticated client across Streamlit user sessions.
+    if "supabase_client" not in st.session_state:
+        st.session_state.supabase_client = create_client(
+            st.secrets["SUPABASE_URL"],
+            st.secrets["SUPABASE_KEY"],
+        )
+    return st.session_state.supabase_client
 
 
 def show_auth():
@@ -16,7 +19,15 @@ def show_auth():
         st.session_state.user = None
 
     if st.session_state.user is not None:
-        return st.session_state.user
+        try:
+            session = supabase.auth.get_session()
+        except Exception:
+            session = None
+        if session and session.user.id == st.session_state.user.id:
+            return st.session_state.user
+        # Existing browser sessions from before this change must sign in again.
+        st.session_state.user = None
+        st.session_state.pop("analysis_access", None)
 
     st.title("📊 Raremotion Analytics")
     st.write("Sign in to analyze your business data.")
@@ -47,7 +58,7 @@ def show_auth():
                         }
                     )
 
-                    if response.user:
+                    if response.user and response.session:
                         st.session_state.user = response.user
                         st.success("Login successful.")
                         st.rerun()
