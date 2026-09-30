@@ -47,7 +47,8 @@ def show_usage(client, user_id):
         code = str(getattr(error, "code", "unknown"))
         logger.warning("Usage read failed: %s code=%s", type(error).__name__,
                        code if code.isalnum() else "unknown")
-        st.caption("Usage status is temporarily unavailable.")
+        safe_code = code if code.isalnum() else "unknown"
+        st.caption(f"Usage status is temporarily unavailable. Reference: {type(error).__name__}/{safe_code}.")
         return
     st.caption(f"Free analyses remaining: {max(0, 2 - used)} · Paid credits: {credits}")
 
