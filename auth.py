@@ -2,6 +2,19 @@ import streamlit as st
 from supabase import create_client
 
 
+class SessionUnavailable(ValueError):
+    """No current session belonging to the requested user."""
+
+
+def bind_authenticated_session(client, user_id):
+    """Refresh if needed, then explicitly bind database requests to this user."""
+    session = client.auth.get_session()
+    if not session or str(session.user.id) != str(user_id) or not session.access_token:
+        raise SessionUnavailable("Sign-in session unavailable")
+    client.postgrest.auth(session.access_token)
+    return session
+
+
 def get_supabase():
     # Never share an authenticated client across Streamlit user sessions.
     if "supabase_client" not in st.session_state:
@@ -20,7 +33,7 @@ def show_auth():
 
     if st.session_state.user is not None:
         try:
-            session = supabase.auth.get_session()
+            session = bind_authenticated_session(supabase, st.session_state.user.id)
         except Exception:
             session = None
         if session and session.user.id == st.session_state.user.id:

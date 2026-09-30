@@ -1,10 +1,26 @@
 """Explicit, session-scoped authorization before the V5 dashboard runs."""
 
 import hashlib
+import logging
 
 import streamlit as st
 
-from auth import get_supabase
+from auth import get_supabase, bind_authenticated_session, SessionUnavailable
+
+logger = logging.getLogger(__name__)
+
+
+def read_usage(client, user_id):
+    bind_authenticated_session(client, user_id)
+    rows = (client.table("profiles")
+            .select("free_analyses_used,paid_credits")
+            .eq("id", str(user_id)).limit(1).execute().data)
+    if not rows:
+        raise LookupError("Profile not readable for current user")
+    used, credits = rows[0]["free_analyses_used"], rows[0]["paid_credits"]
+    if type(used) is not int or type(credits) is not int or used < 0 or credits < 0:
+        raise ValueError("Invalid usage counters")
+    return used, credits
 
 
 def consume_analysis(client):
@@ -19,14 +35,18 @@ def consume_analysis(client):
 
 def show_usage(client, user_id):
     try:
-        rows = (client.table("profiles")
-                .select("free_analyses_used,paid_credits")
-                .eq("id", user_id).limit(1).execute().data)
-        used = rows[0]["free_analyses_used"]
-        credits = rows[0]["paid_credits"]
-        if type(used) is not int or type(credits) is not int:
-            raise ValueError("Invalid usage counters")
-    except Exception:
+        used, credits = read_usage(client, user_id)
+    except SessionUnavailable:
+        st.warning("Your sign-in session is unavailable. Please reload and sign in again.")
+        return
+    except LookupError:
+        st.warning("Your profile could not be read for this signed-in account. Please sign in again; if this continues, contact support.")
+        return
+    except Exception as error:
+        # Never log JWTs, profile data, or raw server exception messages.
+        code = str(getattr(error, "code", "unknown"))
+        logger.warning("Usage read failed: %s code=%s", type(error).__name__,
+                       code if code.isalnum() else "unknown")
         st.caption("Usage status is temporarily unavailable.")
         return
     st.caption(f"Free analyses remaining: {max(0, 2 - used)} · Paid credits: {credits}")
@@ -46,9 +66,7 @@ def require_analysis_access(user, csv_bytes):
     if clicked and access["status"] == "ready":
         access["status"] = "pending"
         try:
-            session = client.auth.get_session()
-            if not session or session.user.id != user.id:
-                raise ValueError("Sign-in session unavailable")
+            bind_authenticated_session(client, user.id)
             allowed = consume_analysis(client)
             access["status"] = "allowed" if allowed else "blocked"
         except Exception:

@@ -13,7 +13,9 @@ class Client:
     def __init__(self):
         self.used = self.credits = self.calls = 0
         self.failure = False
-        self.auth = SimpleNamespace(get_session=lambda: SimpleNamespace(user=SimpleNamespace(id='test-user')))
+        self.token = None
+        self.auth = SimpleNamespace(get_session=lambda: SimpleNamespace(user=SimpleNamespace(id='test-user'), access_token='current-token'))
+        self.postgrest = SimpleNamespace(auth=lambda token: setattr(self, 'token', token))
 
     def rpc(self, name):
         assert name == 'consume_analysis'
@@ -40,6 +42,7 @@ class Client:
         return self
 
     def execute(self):
+        assert self.token == 'current-token', 'Profile read must use the current user token'
         return SimpleNamespace(data=[{'free_analyses_used': self.used, 'paid_credits': self.credits}])
 
 
@@ -138,6 +141,30 @@ class AnalysisTests(unittest.TestCase):
             client = SimpleNamespace(rpc=lambda name: SimpleNamespace(execute=lambda: SimpleNamespace(data=data)))
             with self.assertRaises(ValueError):
                 analysis_access.consume_analysis(client)
+
+    def test_usage_read_binds_current_session_and_accepts_zero(self):
+        self.assertEqual(analysis_access.read_usage(self.client, 'test-user'), (0, 0))
+        self.assertEqual(self.client.token, 'current-token')
+        self.assertEqual(self.client.calls, 0)
+
+    def test_usage_read_rejects_other_user_and_missing_session(self):
+        with self.assertRaises(auth.SessionUnavailable):
+            analysis_access.read_usage(self.client, 'another-user')
+        self.client.auth.get_session = lambda: None
+        with self.assertRaises(auth.SessionUnavailable):
+            analysis_access.read_usage(self.client, 'test-user')
+        self.assertIsNone(self.client.token)
+
+    def test_usage_read_missing_profile_is_not_zero_allowance(self):
+        self.client.execute = lambda: SimpleNamespace(data=[])
+        with self.assertRaises(LookupError):
+            analysis_access.read_usage(self.client, 'test-user')
+
+    def test_token_refresh_rebinds_database_client(self):
+        auth.bind_authenticated_session(self.client, 'test-user')
+        self.client.auth.get_session = lambda: SimpleNamespace(user=SimpleNamespace(id='test-user'), access_token='refreshed-token')
+        auth.bind_authenticated_session(self.client, 'test-user')
+        self.assertEqual(self.client.token, 'refreshed-token')
 
 
 if __name__ == '__main__':
