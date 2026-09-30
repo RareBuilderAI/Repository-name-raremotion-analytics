@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+from auth import show_auth
+
 from ai_analytics import (
     prepare_dataset_summary,
     generate_local_insights,
@@ -18,6 +20,8 @@ st.set_page_config(
     page_icon="📊",
     layout="wide",
 )
+
+user = show_auth()
 
 
 # ==================================================
