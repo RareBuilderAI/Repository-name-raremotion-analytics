@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+from brand import apply_brand, show_intro
 from auth import show_auth
 from analysis_access import require_analysis_access
 
@@ -22,6 +23,7 @@ st.set_page_config(
     layout="wide",
 )
 
+apply_brand()
 user = show_auth()
 
 
@@ -29,11 +31,7 @@ user = show_auth()
 # HEADER
 # ==================================================
 
-st.title("📊 Raremotion Analytics")
-
-st.write(
-    "Turn business data into useful insights."
-)
+show_intro()
 
 
 # ==================================================

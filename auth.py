@@ -1,5 +1,6 @@
 import streamlit as st
 from supabase import create_client
+from brand import show_intro
 
 
 class SessionUnavailable(ValueError):
@@ -42,8 +43,7 @@ def show_auth():
         st.session_state.user = None
         st.session_state.pop("analysis_access", None)
 
-    st.title("📊 Raremotion Analytics")
-    st.write("Sign in to analyze your business data.")
+    show_intro(login=True)
 
     login_tab, signup_tab = st.tabs(["Login", "Create Account"])
 
